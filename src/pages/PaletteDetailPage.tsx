@@ -1,20 +1,62 @@
+
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Share2, BookmarkCheck, Bookmark, Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Share2, BookmarkCheck, Bookmark, Copy, Check, Loader } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { TRENDING_PALETTES } from '../data/palettes';
+import { getPaletteById } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { getContrastColor } from '../lib/colorUtils';
+import type { Palette } from '../types';
 
 const WHATSAPP_NUM = '2348142805347';
+
+function mapSupabasePalette(raw: Record<string, unknown>): Palette {
+  return {
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? ''),
+    description: String(raw.description ?? ''),
+    colors: Array.isArray(raw.colors) ? raw.colors as Palette['colors'] : [],
+    category: (raw.category as Palette['category']) ?? 'wedding',
+    likes: Number(raw.likes ?? raw.likes_count ?? 0),
+    isTrending: Boolean(raw.isTrending ?? raw.is_trending ?? false),
+    image: raw.image ? String(raw.image) : undefined,
+    tags: Array.isArray(raw.tags) ? raw.tags as string[] : undefined,
+  };
+}
 
 export default function PaletteDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { savePalette, removePalette, isPaletteSaved } = useApp();
   const [copied, setCopied] = useState<string | null>(null);
+  const [palette, setPalette] = useState<Palette | null>(() => TRENDING_PALETTES.find(p => p.id === id) ?? null);
+  const [loading, setLoading] = useState(!palette);
 
-  const palette = TRENDING_PALETTES.find(p => p.id === id);
+  useEffect(() => {
+    if (palette) return;
+    if (!id) { setLoading(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await getPaletteById(id);
+        if (!cancelled && data) {
+          setPalette(mapSupabasePalette(data as unknown as Record<string, unknown>));
+        }
+      } catch { /* keep null */ }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [id, palette]);
+
   const saved = palette ? isPaletteSaved(palette.id) : false;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-cream-50 flex items-center justify-center">
+        <Loader size={24} className="text-burgundy-900 animate-spin" />
+      </div>
+    );
+  }
 
   if (!palette) {
     return (

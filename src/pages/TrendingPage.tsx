@@ -1,35 +1,67 @@
-import { useState, useEffect } from 'react';
+
+
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Filter, Search, Loader } from 'lucide-react';
 import PaletteCard from '../components/PaletteCard';
-import { CATEGORIES } from '../data/palettes';
+import { CATEGORIES, TRENDING_PALETTES } from '../data/palettes';
 import { getPalettes } from '../lib/supabase';
 import type { Palette } from '../types';
+
+function mapSupabasePalette(raw: Record<string, unknown>): Palette {
+  return {
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? ''),
+    description: String(raw.description ?? ''),
+    colors: Array.isArray(raw.colors) ? raw.colors as Palette['colors'] : [],
+    category: (raw.category as Palette['category']) ?? 'wedding',
+    likes: Number(raw.likes ?? raw.likes_count ?? 0),
+    isTrending: Boolean(raw.isTrending ?? raw.is_trending ?? false),
+    image: raw.image ? String(raw.image) : undefined,
+    tags: Array.isArray(raw.tags) ? raw.tags as string[] : undefined,
+  };
+}
 
 export default function TrendingPage() {
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState('all');
   const [query, setQuery] = useState('');
-  const [palettes, setPalettes] = useState<Palette[]>([]);
+  const [palettes, setPalettes] = useState<Palette[]>(TRENDING_PALETTES);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadPalettes = async () => {
       setLoading(true);
-      const { data } = await getPalettes(activeCategory);
-      if (data) {
-        const typed = data as unknown as Palette[];
-        setPalettes(typed);
+      try {
+        const { data } = await getPalettes(activeCategory);
+        if (data && data.length > 0) {
+          setPalettes(data.map(mapSupabasePalette));
+        } else {
+          const filtered = activeCategory === 'all'
+            ? TRENDING_PALETTES
+            : activeCategory === 'trending'
+              ? TRENDING_PALETTES.filter(p => p.isTrending)
+              : TRENDING_PALETTES.filter(p => p.category === activeCategory);
+          setPalettes(filtered);
+        }
+      } catch {
+        const filtered = activeCategory === 'all'
+          ? TRENDING_PALETTES
+          : activeCategory === 'trending'
+            ? TRENDING_PALETTES.filter(p => p.isTrending)
+            : TRENDING_PALETTES.filter(p => p.category === activeCategory);
+        setPalettes(filtered);
       }
       setLoading(false);
     };
     loadPalettes();
   }, [activeCategory]);
 
-  const filtered = palettes.filter(p => {
-    const matchQ = !query || p.name.toLowerCase().includes(query.toLowerCase()) || p.tags?.some(t => t.toLowerCase().includes(query.toLowerCase()));
-    return matchQ;
-  });
+  const filtered = useMemo(() => palettes.filter(p => {
+    const q = query.toLowerCase();
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q) || p.tags?.some(t => t.toLowerCase().includes(q));
+  }), [palettes, query]);
 
   return (
     <div className="min-h-screen bg-cream-50 pb-24">
